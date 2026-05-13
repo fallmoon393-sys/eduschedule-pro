@@ -4,18 +4,18 @@ require_once '../config/database.php';
 require_once '../middleware/auth.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
-$uri = explode('/', trim($_SERVER['PATH_INFO'] ?? '', '/'));
-$id = $uri[0] ?? ($_GET['id'] ?? null);
+$uri    = explode('/', trim($_SERVER['PATH_INFO'] ?? '', '/'));
+$id     = $uri[0] ?? ($_GET['id'] ?? null);
 $action = $uri[1] ?? ($_GET['action'] ?? '');
 
-// GET - Liste des vacations avec détail des séances
+// GET - Liste des vacations
 if ($method === 'GET' && !$id) {
     $user = verifyToken();
     $db = getDB();
 
     $id_enseignant = $_GET['id_enseignant'] ?? null;
-    $mois = $_GET['mois'] ?? null;
-    $annee = $_GET['annee'] ?? null;
+    $mois          = $_GET['mois']          ?? null;
+    $annee         = $_GET['annee']         ?? null;
 
     $sql = 'SELECT v.*, e.nom, e.prenom, e.taux_horaire,
                    (SELECT COUNT(*) FROM vacation_lignes vl WHERE vl.id_vacation = v.id) as nb_seances
@@ -28,7 +28,6 @@ if ($method === 'GET' && !$id) {
     if ($mois)          { $sql .= ' AND v.mois = ?';          $params[] = $mois; }
     if ($annee)         { $sql .= ' AND v.annee = ?';         $params[] = $annee; }
 
-    // Enseignant voit uniquement ses fiches
     if ($user['role'] === 'enseignant') {
         $stmtE = $db->prepare('SELECT id FROM enseignants WHERE id_utilisateur = ?');
         $stmtE->execute([$user['id']]);
@@ -43,7 +42,7 @@ if ($method === 'GET' && !$id) {
     exit;
 }
 
-// GET - Détail d'une vacation avec ses lignes
+// GET - Détail d'une vacation avec ses lignes  (CORRIGÉ : join via id_cahier)
 if ($method === 'GET' && $id && !$action) {
     $user = verifyToken();
     $db = getDB();
@@ -61,11 +60,11 @@ if ($method === 'GET' && $id && !$action) {
         exit;
     }
 
-    // Récupérer les lignes de séances
+    // CORRIGÉ : join direct sur id_cahier pour éviter les doublons
     $stmtL = $db->prepare('SELECT vl.*, ct.titre_cours, ct.date_creation,
                             m.libelle as matiere, cl.libelle as classe
                             FROM vacation_lignes vl
-                            JOIN cahiers_texte ct ON vl.id_creneau = ct.id_creneau
+                            JOIN cahiers_texte ct ON vl.id_cahier = ct.id
                             JOIN creneaux c ON vl.id_creneau = c.id
                             JOIN matieres m ON c.id_matiere = m.id
                             JOIN emploi_temps et ON c.id_emploi_temps = et.id
@@ -87,12 +86,13 @@ if ($method === 'POST' && $action === 'generer') {
         echo json_encode(['error' => 'Accès refusé']);
         exit;
     }
+
     $data = json_decode(file_get_contents('php://input'), true);
     $db = getDB();
 
     $id_enseignant = $data['id_enseignant'] ?? null;
-    $mois          = $data['mois'] ?? null;
-    $annee         = $data['annee'] ?? null;
+    $mois          = $data['mois']          ?? null;
+    $annee         = $data['annee']         ?? null;
 
     if (!$id_enseignant || !$mois || !$annee) {
         http_response_code(400);
@@ -100,7 +100,6 @@ if ($method === 'POST' && $action === 'generer') {
         exit;
     }
 
-    // Vérifier doublon
     $stmtCheck = $db->prepare('SELECT id FROM vacations WHERE id_enseignant = ? AND mois = ? AND annee = ?');
     $stmtCheck->execute([$id_enseignant, $mois, $annee]);
     if ($stmtCheck->fetch()) {
@@ -109,7 +108,6 @@ if ($method === 'POST' && $action === 'generer') {
         exit;
     }
 
-    // Récupérer les séances clôturées du mois
     $stmt = $db->prepare('SELECT ct.id as id_cahier, ct.heure_fin_reelle, ct.date_creation,
                            c.id as id_creneau, c.heure_debut, c.heure_fin,
                            m.libelle as matiere, cl.libelle as classe,
@@ -129,7 +127,7 @@ if ($method === 'POST' && $action === 'generer') {
 
     if (empty($seances)) {
         http_response_code(400);
-        echo json_encode(['error' => 'Aucune séance clôturée trouvée pour ce mois. Les séances doivent être clôturées avant de générer la fiche.']);
+        echo json_encode(['error' => 'Aucune séance clôturée trouvée pour ce mois.']);
         exit;
     }
 
@@ -138,18 +136,17 @@ if ($method === 'POST' && $action === 'generer') {
 
     foreach ($seances as $seance) {
         $heure_fin_effective = $seance['heure_fin_reelle'] ?? $seance['heure_fin'];
-        $debut = strtotime('1970-01-01 ' . $seance['heure_debut']);
-        $fin   = strtotime('1970-01-01 ' . $heure_fin_effective);
-        $duree = max(0, ($fin - $debut) / 3600);
+        $debut   = strtotime('1970-01-01 ' . $seance['heure_debut']);
+        $fin     = strtotime('1970-01-01 ' . $heure_fin_effective);
+        $duree   = max(0, ($fin - $debut) / 3600);
         $montant = round($duree * $seance['taux_horaire']);
         $montant_brut += $montant;
         $lignes[] = [
             'id_creneau' => $seance['id_creneau'],
+            'id_cahier'  => $seance['id_cahier'],   // CORRIGÉ : stocké pour le join
             'duree'      => $duree,
             'taux'       => $seance['taux_horaire'],
             'montant'    => $montant,
-            'matiere'    => $seance['matiere'],
-            'classe'     => $seance['classe']
         ];
     }
 
@@ -160,8 +157,9 @@ if ($method === 'POST' && $action === 'generer') {
         $id_vacation = $db->lastInsertId();
 
         foreach ($lignes as $ligne) {
-            $stmt3 = $db->prepare('INSERT INTO vacation_lignes (id_vacation, id_creneau, duree_heures, taux, montant) VALUES (?, ?, ?, ?, ?)');
-            $stmt3->execute([$id_vacation, $ligne['id_creneau'], $ligne['duree'], $ligne['taux'], $ligne['montant']]);
+            // CORRIGÉ : id_cahier inclus dans l'INSERT
+            $stmt3 = $db->prepare('INSERT INTO vacation_lignes (id_vacation, id_creneau, id_cahier, duree_heures, taux, montant) VALUES (?, ?, ?, ?, ?, ?)');
+            $stmt3->execute([$id_vacation, $ligne['id_creneau'], $ligne['id_cahier'], $ligne['duree'], $ligne['taux'], $ligne['montant']]);
         }
 
         $db->commit();
@@ -177,7 +175,7 @@ if ($method === 'POST' && $action === 'generer') {
         'message'      => 'Fiche générée avec succès',
         'id'           => $id_vacation,
         'nb_seances'   => count($lignes),
-        'montant_brut' => $montant_brut
+        'montant_brut' => $montant_brut,
     ]);
     exit;
 }
@@ -236,8 +234,7 @@ if ($method === 'POST' && $id && $action === 'approuver') {
         exit;
     }
 
-    // Calcul retenues si applicable
-    $retenues = $data['retenues'] ?? 0;
+    $retenues    = $data['retenues'] ?? 0;
     $montant_net = $vacation['montant_brut'] - $retenues;
 
     $db->prepare('UPDATE vacations SET statut = "approuvee_comptable", montant_net = ? WHERE id = ?')

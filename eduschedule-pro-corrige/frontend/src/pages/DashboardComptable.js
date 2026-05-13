@@ -9,7 +9,7 @@ const MOIS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août'
 const DashboardComptable = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
-    const [vacations, setVacations] = useState([]);
+    const [vacations, setVacations] = useState([]);      // ← déclaration unique
     const [onglet, setOnglet] = useState('dashboard');
     const [selectedVacation, setSelectedVacation] = useState(null);
     const [showDetail, setShowDetail] = useState(false);
@@ -62,9 +62,9 @@ const DashboardComptable = () => {
         }
     };
 
-    const totalBrut = vacations.reduce((s, v) => s + parseFloat(v.montant_brut || 0), 0);
-    const totalNet  = vacations.reduce((s, v) => s + parseFloat(v.montant_net || 0), 0);
-    const aApprouver = vacations.filter(v => v.statut === 'validee_surveillant');
+    const totalBrut   = vacations.reduce((s, v) => s + parseFloat(v.montant_brut || 0), 0);
+    const totalNet    = vacations.reduce((s, v) => s + parseFloat(v.montant_net  || 0), 0);
+    const aApprouver  = vacations.filter(v => v.statut === 'validee_surveillant');
 
     return (
         <div>

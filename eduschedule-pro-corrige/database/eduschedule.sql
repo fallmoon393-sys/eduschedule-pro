@@ -45,6 +45,7 @@ CREATE TABLE enseignants (
     specialite VARCHAR(100),
     statut ENUM('vacataire', 'permanent') NOT NULL DEFAULT 'vacataire',
     taux_horaire DECIMAL(10,2) NOT NULL DEFAULT 0,
+    id_utilisateur INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -110,21 +111,23 @@ CREATE TABLE creneaux (
 );
 
 -- ============================================
--- TABLE : pointages
+-- TABLE : pointages  (CORRIGÉ : ajout id_enseignant)
 -- ============================================
 CREATE TABLE pointages (
     id INT AUTO_INCREMENT PRIMARY KEY,
     id_creneau INT NOT NULL,
+    id_enseignant INT NOT NULL,
     heure_pointage_reelle DATETIME NOT NULL,
     ip_source VARCHAR(50),
     token_utilise VARCHAR(255),
     statut ENUM('valide', 'retard', 'invalide') DEFAULT 'valide',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_creneau) REFERENCES creneaux(id) ON DELETE CASCADE
+    FOREIGN KEY (id_creneau) REFERENCES creneaux(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_enseignant) REFERENCES enseignants(id)
 );
 
 -- ============================================
--- TABLE : cahiers_texte
+-- TABLE : cahiers_texte  (CORRIGÉ : ajout signe_enseignant + colonnes manquantes)
 -- ============================================
 CREATE TABLE cahiers_texte (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -132,8 +135,10 @@ CREATE TABLE cahiers_texte (
     id_delegue INT NOT NULL,
     titre_cours VARCHAR(200),
     contenu_json TEXT,
+    niveau_avancement VARCHAR(100) DEFAULT NULL,
+    observations TEXT DEFAULT NULL,
     heure_fin_reelle TIME DEFAULT NULL,
-    statut ENUM('brouillon', 'signe_delegue', 'cloture') DEFAULT 'brouillon',
+    statut ENUM('brouillon', 'signe_delegue', 'signe_enseignant', 'cloture') DEFAULT 'brouillon',
     date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_creneau) REFERENCES creneaux(id) ON DELETE CASCADE,
     FOREIGN KEY (id_delegue) REFERENCES utilisateurs(id)
@@ -182,17 +187,19 @@ CREATE TABLE vacations (
 );
 
 -- ============================================
--- TABLE : vacation_lignes
+-- TABLE : vacation_lignes  (CORRIGÉ : ajout id_cahier)
 -- ============================================
 CREATE TABLE vacation_lignes (
     id INT AUTO_INCREMENT PRIMARY KEY,
     id_vacation INT NOT NULL,
     id_creneau INT NOT NULL,
+    id_cahier INT NOT NULL,
     duree_heures DECIMAL(5,2) NOT NULL,
     taux DECIMAL(10,2) NOT NULL,
     montant DECIMAL(10,2) NOT NULL,
     FOREIGN KEY (id_vacation) REFERENCES vacations(id) ON DELETE CASCADE,
-    FOREIGN KEY (id_creneau) REFERENCES creneaux(id)
+    FOREIGN KEY (id_creneau) REFERENCES creneaux(id),
+    FOREIGN KEY (id_cahier) REFERENCES cahiers_texte(id)
 );
 
 -- ============================================
@@ -211,6 +218,20 @@ CREATE TABLE validations (
 );
 
 -- ============================================
+-- TABLE : scan_logs
+-- ============================================
+CREATE TABLE scan_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    id_creneau INT DEFAULT NULL,
+    action VARCHAR(50) NOT NULL,
+    ip_source VARCHAR(50),
+    details TEXT,
+    statut_scan VARCHAR(50) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_creneau) REFERENCES creneaux(id) ON DELETE SET NULL
+);
+
+-- ============================================
 -- TABLE : logs_activite
 -- ============================================
 CREATE TABLE logs_activite (
@@ -224,16 +245,14 @@ CREATE TABLE logs_activite (
 );
 
 -- ============================================
--- DONNEES DE DEMONSTRATION
+-- DONNÉES DE DÉMONSTRATION
 -- ============================================
 
--- Classes
 INSERT INTO classes (code, libelle, niveau, annee_academique) VALUES
 ('RST1', 'Réseaux et Systèmes - Année 1', 'Licence 1', '2025-2026'),
 ('RST2', 'Réseaux et Systèmes - Année 2', 'Licence 2', '2025-2026'),
 ('RST3', 'Réseaux et Systèmes - Année 3', 'Licence 3', '2025-2026');
 
--- Matières
 INSERT INTO matieres (code, libelle, volume_horaire_total, coefficient) VALUES
 ('INFO101', 'Développement Web', 60, 3),
 ('INFO102', 'Base de Données', 45, 2),
@@ -241,26 +260,24 @@ INSERT INTO matieres (code, libelle, volume_horaire_total, coefficient) VALUES
 ('INFO104', 'Programmation Orientée Objet', 60, 3),
 ('INFO105', 'Systèmes d\'exploitation', 30, 2);
 
--- Enseignants
-INSERT INTO enseignants (matricule, nom, prenom, email, specialite, statut, taux_horaire) VALUES
-('ENS001', 'BERE', 'Cédric', 'cedric.bere@isge.edu', 'Développement Web', 'permanent', 15000),
-('ENS002', 'OUEDRAOGO', 'Moussa', 'moussa.ouedraogo@isge.edu', 'Base de Données', 'vacataire', 12000),
-('ENS003', 'KABORE', 'Aïcha', 'aicha.kabore@isge.edu', 'Réseaux', 'vacataire', 12000),
-('ENS004', 'TRAORE', 'Ibrahim', 'ibrahim.traore@isge.edu', 'Programmation', 'permanent', 15000),
-('ENS005', 'ZONGO', 'Fatima', 'fatima.zongo@isge.edu', 'Systèmes', 'vacataire', 10000);
-
--- Salles
 INSERT INTO salles (code, capacite, equipements, batiment) VALUES
 ('A101', 40, 'Projecteur, Tableau blanc', 'Bâtiment A'),
 ('A102', 35, 'Projecteur', 'Bâtiment A'),
 ('B201', 50, 'Projecteur, Climatisation', 'Bâtiment B'),
 ('LABO1', 30, 'Ordinateurs, Projecteur', 'Laboratoire');
 
--- Utilisateurs (mot de passe : "password123" hashé en bcrypt)
+-- Utilisateurs (mot de passe : "password123")
 INSERT INTO utilisateurs (email, mot_de_passe_hash, role, id_lien) VALUES
-('admin@isge.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', NULL),
-('cedric.bere@isge.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'enseignant', 1),
-('moussa.ouedraogo@isge.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'enseignant', 2),
-('delegue.rst1@isge.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'delegue', NULL),
-('surveillant@isge.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'surveillant', NULL),
-('comptable@isge.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'comptable', NULL);
+('admin@isge.edu',              '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin',       NULL),
+('cedric.bere@isge.edu',        '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'enseignant',  1),
+('moussa.ouedraogo@isge.edu',   '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'enseignant',  2),
+('delegue.rst1@isge.edu',       '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'delegue',     NULL),
+('surveillant@isge.edu',        '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'surveillant', NULL),
+('comptable@isge.edu',          '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'comptable',   NULL);
+
+INSERT INTO enseignants (matricule, nom, prenom, email, specialite, statut, taux_horaire, id_utilisateur) VALUES
+('ENS001', 'BERE',       'Cédric',  'cedric.bere@isge.edu',      'Développement Web', 'permanent', 15000, 2),
+('ENS002', 'OUEDRAOGO',  'Moussa',  'moussa.ouedraogo@isge.edu', 'Base de Données',   'vacataire', 12000, 3),
+('ENS003', 'KABORE',     'Aïcha',   'aicha.kabore@isge.edu',     'Réseaux',           'vacataire', 12000, NULL),
+('ENS004', 'TRAORE',     'Ibrahim', 'ibrahim.traore@isge.edu',   'Programmation',     'permanent', 15000, NULL),
+('ENS005', 'ZONGO',      'Fatima',  'fatima.zongo@isge.edu',     'Systèmes',          'vacataire', 10000, NULL);

@@ -1,53 +1,74 @@
-// Utilitaire d'export PDF via jsPDF
-// Usage : import { exportEmploiTemps, exportCahier, exportVacation } from '../utils/exportPDF';
-
 const loadJsPDF = async () => {
-    const { default: jsPDF } = await import('jspdf');
+    const { default: jsPDF }     = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
-    // Patch: attach autoTable to prototype if not already there
     if (!jsPDF.prototype.autoTable) {
-        jsPDF.prototype.autoTable = function(...args) {
+        jsPDF.prototype.autoTable = function (...args) {
             return autoTable(this, ...args);
         };
     }
     return jsPDF;
 };
 
-const MOIS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+const MOIS  = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 const JOURS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
-// ============================================================
-// 1. EXPORT EMPLOI DU TEMPS
-// ============================================================
+const addHeader = (doc, title, subtitle = '') => {
+    const W = doc.internal.pageSize.getWidth();
+    doc.setFillColor(52, 152, 219);
+    doc.rect(0, 0, W, 25, 'F');
+    doc.setFontSize(14); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+    doc.text('EduSchedule Pro', 14, 11);
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.text('Système de Gestion Scolaire', 14, 18);
+    const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    doc.setFontSize(8);
+    doc.text(`Imprimé le ${now}`, W - 14, 18, { align: 'right' });
+    doc.setFontSize(16); doc.setTextColor(44, 62, 80); doc.setFont('helvetica', 'bold');
+    doc.text(title, W / 2, 38, { align: 'center' });
+    if (subtitle) {
+        doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
+        doc.text(subtitle, W / 2, 45, { align: 'center' });
+        return 52;
+    }
+    return 45;
+};
+
+const addFooter = (doc) => {
+    const W = doc.internal.pageSize.getWidth();
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8); doc.setTextColor(150); doc.setFont('helvetica', 'normal');
+        doc.text(
+            `EduSchedule Pro | Page ${i}/${pageCount} | ${new Date().toLocaleDateString('fr-FR')}`,
+            W / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' }
+        );
+    }
+};
+
+// ── 1. EMPLOI DU TEMPS ────────────────────────────────────────────────────────
 export const exportEmploiTemps = async (creneaux, classeLibelle, semaine) => {
     const jsPDF = await loadJsPDF();
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
 
-    // En-tête
-    doc.setFillColor(41, 128, 185);
-    doc.rect(0, 0, 297, 20, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('EduSchedule Pro — Emploi du Temps', 148, 13, { align: 'center' });
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(52, 152, 219);
+    doc.rect(0, 0, W, 20, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+    doc.text('EduSchedule Pro — Emploi du Temps', W / 2, 13, { align: 'center' });
+    doc.setTextColor(0, 0, 0); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
     doc.text(`Classe : ${classeLibelle}`, 14, 30);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Généré le : ${new Date().toLocaleDateString('fr-FR')}`, 14, 37);
+    if (semaine) doc.text(`Semaine du : ${semaine}`, 14, 37);
+    doc.text(`Généré le : ${new Date().toLocaleDateString('fr-FR')}`, W - 14, 37, { align: 'right' });
 
-    // Grille horaire
     const heures = ['06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
-    
-    const headers = ['Heure', ...JOURS];
     const rows = heures.map(heure => {
         const row = [heure];
         JOURS.forEach(jour => {
             const creneau = creneaux.find(c => {
                 const debutH = parseInt(c.heure_debut?.substring(0, 2));
-                const finH = parseInt(c.heure_fin?.substring(0, 2));
+                const finH   = parseInt(c.heure_fin?.substring(0, 2));
                 const heureH = parseInt(heure.substring(0, 2));
                 return c.jour === jour && heureH >= debutH && heureH < finH;
             });
@@ -63,12 +84,12 @@ export const exportEmploiTemps = async (creneaux, classeLibelle, semaine) => {
 
     doc.autoTable({
         startY: 42,
-        head: [headers],
+        head: [['Heure', ...JOURS]],
         body: rows,
         theme: 'grid',
-        headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+        headStyles: { fillColor: [52, 152, 219], textColor: 255, fontStyle: 'bold', fontSize: 9 },
         bodyStyles: { fontSize: 7, cellPadding: 2 },
-        columnStyles: { 0: { cellWidth: 18, fontStyle: 'bold' } },
+        columnStyles: { 0: { cellWidth: 18, fontStyle: 'bold', fillColor: [240, 248, 255] } },
         didParseCell: (data) => {
             if (data.section === 'body' && data.column.index > 0 && data.cell.text[0]) {
                 data.cell.styles.fillColor = [214, 234, 248];
@@ -77,21 +98,11 @@ export const exportEmploiTemps = async (creneaux, classeLibelle, semaine) => {
         }
     });
 
-    // Pied de page
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text(`EduSchedule Pro | Page ${i}/${pageCount} | ${new Date().toLocaleDateString('fr-FR')}`, 148, 205, { align: 'center' });
-    }
-
+    addFooter(doc);
     doc.save(`emploi_du_temps_${classeLibelle.replace(/\s/g, '_')}.pdf`);
 };
 
-// ============================================================
-// 2. EXPORT CAHIER DE TEXTE
-// ============================================================
+// ── 2. CAHIER DE TEXTE ────────────────────────────────────────────────────────
 export const exportCahier = async (cahier) => {
     const jsPDF = await loadJsPDF();
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -99,289 +110,197 @@ export const exportCahier = async (cahier) => {
     const parseContenu = (contenu_json) => {
         try {
             const p = typeof contenu_json === 'string' ? JSON.parse(contenu_json) : contenu_json;
-            return { points: p?.points || '', travaux: p?.travaux || '' };
-        } catch { return { points: contenu_json || '', travaux: '' }; }
+            return { points: p?.points || '', travaux: p?.travaux || '', observations: p?.observations || '' };
+        } catch {
+            return { points: contenu_json || '', travaux: '', observations: '' };
+        }
     };
-
     const contenu = parseContenu(cahier.contenu_json);
 
-    // En-tête
-    doc.setFillColor(41, 128, 185);
-    doc.rect(0, 0, 210, 25, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('EduSchedule Pro', 105, 10, { align: 'center' });
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Cahier de Texte Numérique', 105, 18, { align: 'center' });
-
-    // Titre
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(cahier.titre_cours || 'Sans titre', 105, 35, { align: 'center' });
-
-    // Ligne séparatrice
-    doc.setDrawColor(41, 128, 185);
-    doc.setLineWidth(0.5);
-    doc.line(14, 40, 196, 40);
-
-    // Informations principales
-    let y = 48;
-    const champs = [
-        ['Classe',       cahier.classe || '—'],
-        ['Matière',      cahier.matiere || '—'],
-        ['Enseignant',   `${cahier.enseignant_nom || ''} ${cahier.enseignant_prenom || ''}`],
-        ['Date',         new Date(cahier.date_creation).toLocaleDateString('fr-FR')],
-        ['Heure début',  cahier.heure_debut?.substring(0, 5) || '—'],
-        ['Heure fin',    cahier.heure_fin_reelle || cahier.heure_fin?.substring(0, 5) || '—'],
-        ['Statut',       cahier.statut === 'cloture' ? 'Clôturé ✓' : cahier.statut],
-    ];
+    let y = addHeader(doc, 'Cahier de Texte Numérique', cahier.titre_cours || 'Sans titre');
 
     doc.autoTable({
         startY: y,
-        body: champs,
-        theme: 'plain',
-        bodyStyles: { fontSize: 10, cellPadding: 3 },
-        columnStyles: {
-            0: { fontStyle: 'bold', cellWidth: 45, fillColor: [234, 242, 248] },
-            1: { cellWidth: 140 }
-        }
-    });
-
-    y = doc.lastAutoTable.finalY + 8;
-
-    // Points du cours
-    doc.setFillColor(234, 242, 248);
-    doc.rect(14, y, 182, 7, 'F');
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(41, 128, 185);
-    doc.text('Points vus dans le cours', 18, y + 5);
-
-    y += 10;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(0, 0, 0);
-    const pointsLines = doc.splitTextToSize(contenu.points || 'Aucun contenu renseigné', 180);
-    doc.text(pointsLines, 14, y);
-    y += pointsLines.length * 6 + 8;
-
-    // Travaux demandés
-    if (contenu.travaux) {
-        doc.setFillColor(254, 249, 231);
-        doc.rect(14, y, 182, 7, 'F');
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(230, 126, 34);
-        doc.text('Travaux demandés', 18, y + 5);
-        y += 10;
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
-        const travauxLines = doc.splitTextToSize(contenu.travaux, 180);
-        doc.text(travauxLines, 14, y);
-        y += travauxLines.length * 6 + 8;
-    }
-
-    // Niveau d'avancement
-    if (cahier.niveau_avancement) {
-        doc.setFont('helvetica', 'bold');
-        doc.text(`Niveau d'avancement : `, 14, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(cahier.niveau_avancement, 72, y);
-        y += 8;
-    }
-
-    // Observations
-    if (cahier.observations) {
-        doc.setFillColor(253, 237, 237);
-        doc.rect(14, y, 182, 7, 'F');
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(231, 76, 60);
-        doc.text('Observations', 18, y + 5);
-        y += 10;
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
-        const obsLines = doc.splitTextToSize(cahier.observations, 180);
-        doc.text(obsLines, 14, y);
-        y += obsLines.length * 6 + 8;
-    }
-
-    // Zone signatures
-    y = Math.max(y, 220);
-    doc.setDrawColor(150);
-    doc.setLineWidth(0.3);
-    doc.line(14, y, 196, y);
-    y += 8;
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Signature Délégué', 50, y, { align: 'center' });
-    doc.text('Signature Enseignant', 160, y, { align: 'center' });
-    y += 4;
-
-    // Cadres de signature
-    doc.setDrawColor(100);
-    doc.rect(14, y, 72, 25);
-    doc.rect(124, y, 72, 25);
-
-    if (cahier.signe_delegue > 0) {
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(46, 204, 113);
-        doc.text('✓ Signé', 50, y + 14, { align: 'center' });
-    }
-    if (cahier.signe_enseignant > 0) {
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(46, 204, 113);
-        doc.text('✓ Signé', 160, y + 14, { align: 'center' });
-    }
-
-    // Pied de page
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.text(`EduSchedule Pro | Cahier de texte | ${new Date().toLocaleDateString('fr-FR')}`, 105, 290, { align: 'center' });
-
-    doc.save(`cahier_texte_${(cahier.titre_cours || 'cahier').replace(/\s/g, '_')}.pdf`);
-};
-
-// ============================================================
-// 3. EXPORT FICHE DE VACATION
-// ============================================================
-export const exportVacation = async (vacation) => {
-    const jsPDF = await loadJsPDF();
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-    // En-tête
-    doc.setFillColor(44, 62, 80);
-    doc.rect(0, 0, 210, 30, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('EduSchedule Pro', 105, 12, { align: 'center' });
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Fiche de Vacation Mensuelle', 105, 22, { align: 'center' });
-
-    // Informations enseignant
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`${vacation.nom} ${vacation.prenom}`, 105, 42, { align: 'center' });
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Période : ${MOIS[vacation.mois - 1]} ${vacation.annee}`, 105, 50, { align: 'center' });
-
-    doc.setDrawColor(44, 62, 80);
-    doc.line(14, 55, 196, 55);
-
-    // Informations générales
-    doc.autoTable({
-        startY: 58,
         body: [
-            ['Taux horaire',   `${parseFloat(vacation.taux_horaire || 0).toLocaleString('fr-FR')} FCFA/h`],
-            ['Nombre de séances', vacation.lignes?.length || vacation.nb_seances || 0],
-            ['Montant brut',   `${parseFloat(vacation.montant_brut || 0).toLocaleString('fr-FR')} FCFA`],
-            ['Retenues',       `${(parseFloat(vacation.montant_brut || 0) - parseFloat(vacation.montant_net || 0)).toLocaleString('fr-FR')} FCFA`],
-            ['Montant net',    `${parseFloat(vacation.montant_net || 0).toLocaleString('fr-FR')} FCFA`],
+            ['Classe',      cahier.classe   || '—'],
+            ['Matière',     cahier.matiere  || '—'],
+            ['Enseignant',  `${cahier.enseignant_nom || ''} ${cahier.enseignant_prenom || ''}`.trim() || '—'],
+            ['Date',        new Date(cahier.date_creation).toLocaleDateString('fr-FR')],
+            ['Heure début', cahier.heure_debut?.substring(0, 5) || '—'],
+            ['Heure fin',   cahier.heure_fin_reelle || cahier.heure_fin?.substring(0, 5) || '—'],
+            ['Statut',      cahier.statut === 'cloture' ? '🔒 Clôturé' : cahier.statut || '—'],
         ],
         theme: 'plain',
         bodyStyles: { fontSize: 10, cellPadding: 3 },
         columnStyles: {
-            0: { fontStyle: 'bold', cellWidth: 60, fillColor: [236, 240, 241] },
-            1: { cellWidth: 100 }
+            0: { fontStyle: 'bold', cellWidth: 45, fillColor: [234, 242, 248] },
+            1: { cellWidth: 140 },
         }
     });
+    y = doc.lastAutoTable.finalY + 8;
 
-    // Tableau détail séances
-    if (vacation.lignes && vacation.lignes.length > 0) {
-        const y = doc.lastAutoTable.finalY + 10;
-        
-        doc.setFillColor(44, 62, 80);
+    const addSection = (label, content, fillColor, textColor) => {
+        if (!content) return;
+        doc.setFillColor(...fillColor);
         doc.rect(14, y, 182, 8, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Détail des séances réalisées', 105, y + 5.5, { align: 'center' });
+        doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(...textColor);
+        doc.text(label, 18, y + 5.5);
+        y += 10;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(0, 0, 0);
+        const lines = doc.splitTextToSize(content, 178);
+        doc.text(lines, 14, y);
+        y += lines.length * 6 + 8;
+    };
 
+    addSection('Points vus dans le cours', contenu.points || 'Aucun contenu renseigné', [234, 242, 248], [41, 128, 185]);
+    addSection('Travaux demandés',         contenu.travaux,      [254, 249, 231], [230, 126, 34]);
+    addSection('Observations',             contenu.observations, [253, 237, 237], [231, 76, 60]);
+
+    if (cahier.niveau_avancement) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0);
+        doc.text("Niveau d'avancement :", 14, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(cahier.niveau_avancement), 70, y);
+        y += 8;
+    }
+
+    y = Math.max(y + 10, 225);
+    doc.setDrawColor(150); doc.setLineWidth(0.3); doc.line(14, y, 196, y);
+    y += 6;
+    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
+    doc.text('Signature Délégué',    50,  y, { align: 'center' });
+    doc.text('Signature Enseignant', 160, y, { align: 'center' });
+    y += 4;
+    doc.setDrawColor(100);
+    doc.rect(14,  y, 72, 25);
+    doc.rect(124, y, 72, 25);
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    if (cahier.signe_delegue    > 0) { doc.setTextColor(46, 204, 113); doc.text('✓ Signé', 50,  y + 14, { align: 'center' }); }
+    if (cahier.signe_enseignant > 0) { doc.setTextColor(46, 204, 113); doc.text('✓ Signé', 160, y + 14, { align: 'center' }); }
+
+    addFooter(doc);
+    doc.save(`cahier_texte_${(cahier.titre_cours || 'cahier').replace(/\s/g, '_')}.pdf`);
+};
+
+// ── 3. FICHE DE VACATION ──────────────────────────────────────────────────────
+export const exportVacation = async (vacation) => {
+    const jsPDF = await loadJsPDF();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const moisLabel = MOIS[(vacation.mois || 1) - 1];
+
+    let y = addHeader(doc, 'Fiche de Vacation Mensuelle', `${vacation.nom} ${vacation.prenom} — ${moisLabel} ${vacation.annee}`);
+
+    doc.setFillColor(248, 249, 250); doc.setDrawColor(52, 152, 219);
+    doc.rect(14, y, W - 28, 30, 'FD');
+    const infoEns = [
+        ['Enseignant :',   `${vacation.nom} ${vacation.prenom}`],
+        ['Taux horaire :', `${parseFloat(vacation.taux_horaire || 0).toLocaleString('fr-FR')} FCFA/heure`],
+        ['Période :',      `${moisLabel} ${vacation.annee}`],
+        ['Nb séances :',   `${vacation.lignes?.length || vacation.nb_seances || 0} séance(s)`],
+    ];
+    infoEns.forEach((info, i) => {
+        const col = i % 2 === 0 ? 18 : W / 2 + 4;
+        const row = Math.floor(i / 2);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(44, 62, 80);
+        doc.text(info[0], col, y + 10 + row * 10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(info[1], col + 38, y + 10 + row * 10);
+    });
+    y += 36;
+
+    doc.setFillColor(52, 152, 219); doc.rect(14, y, W - 28, 8, 'F');
+    doc.setFontSize(10); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+    doc.text('DÉTAIL DES SÉANCES RÉALISÉES', 18, y + 5.5);
+    y += 10;
+
+    if (vacation.lignes && vacation.lignes.length > 0) {
         doc.autoTable({
-            startY: y + 8,
             head: [['Matière', 'Classe', 'Durée (h)', 'Taux (FCFA/h)', 'Montant (FCFA)']],
             body: vacation.lignes.map(l => [
                 l.matiere || '—',
-                l.classe || '—',
-                parseFloat(l.duree_heures || 0).toFixed(1),
-                parseFloat(l.taux || 0).toLocaleString('fr-FR'),
-                parseFloat(l.montant || 0).toLocaleString('fr-FR')
+                l.classe  || '—',
+                parseFloat(l.duree_heures || 0).toFixed(2),
+                parseFloat(l.taux    || 0).toLocaleString('fr-FR'),
+                parseFloat(l.montant || 0).toLocaleString('fr-FR'),
             ]),
             foot: [[
                 { content: 'TOTAL', colSpan: 2, styles: { fontStyle: 'bold', halign: 'right' } },
-                vacation.lignes.reduce((s, l) => s + parseFloat(l.duree_heures || 0), 0).toFixed(1),
+                { content: vacation.lignes.reduce((s, l) => s + parseFloat(l.duree_heures || 0), 0).toFixed(2), styles: { fontStyle: 'bold' } },
                 '',
-                parseFloat(vacation.montant_brut || 0).toLocaleString('fr-FR')
+                { content: parseFloat(vacation.montant_brut || 0).toLocaleString('fr-FR'), styles: { fontStyle: 'bold' } },
             ]],
-            theme: 'striped',
-            headStyles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold', fontSize: 9 },
-            footStyles: { fillColor: [236, 240, 241], fontStyle: 'bold', fontSize: 9 },
-            bodyStyles: { fontSize: 9 },
+            startY: y,
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: [52, 152, 219], textColor: 255, fontStyle: 'bold' },
+            footStyles: { fillColor: [240, 240, 240], fontStyle: 'bold' },
+            alternateRowStyles: { fillColor: [248, 249, 250] },
+            columnStyles: { 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right', fontStyle: 'bold' } },
         });
+        y = doc.lastAutoTable.finalY + 8;
+    } else {
+        doc.setFontSize(9); doc.setTextColor(150); doc.text('Aucune séance enregistrée', 18, y + 8);
+        y += 16;
     }
 
-    // Zone validation
-    const yValid = doc.lastAutoTable ? doc.lastAutoTable.finalY + 15 : 200;
-    
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0);
-    doc.text('Validations', 14, yValid);
-    doc.setLineWidth(0.3);
-    doc.line(14, yValid + 2, 196, yValid + 2);
+    doc.setFillColor(52, 152, 219); doc.rect(14, y, W - 28, 8, 'F');
+    doc.setFontSize(10); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+    doc.text('RÉCAPITULATIF FINANCIER', 18, y + 5.5);
+    y += 12;
 
-    // Statut workflow
-    const statuts = [
-        { label: 'Généré', done: true },
-        { label: 'Validé (Surveillant)', done: ['validee_surveillant', 'approuvee_comptable'].includes(vacation.statut) },
-        { label: 'Approuvé (Comptable)', done: vacation.statut === 'approuvee_comptable' },
-    ];
-
-    statuts.forEach((s, i) => {
-        const x = 14 + i * 62;
-        doc.setFillColor(s.done ? 46 : 200, s.done ? 204 : 200, s.done ? 113 : 200);
-        doc.circle(x + 10, yValid + 15, 5, 'F');
-        doc.setFontSize(8);
-        doc.setFont('helvetica', s.done ? 'bold' : 'normal');
-        doc.setTextColor(s.done ? 46 : 150, s.done ? 204 : 150, s.done ? 113 : 150);
-        doc.text(s.label, x + 10, yValid + 25, { align: 'center' });
+    const montantRetenues = parseFloat(vacation.montant_brut || 0) - parseFloat(vacation.montant_net || 0);
+    [
+        ['Montant brut :',        `${parseFloat(vacation.montant_brut || 0).toLocaleString('fr-FR')} FCFA`, false],
+        ['Retenues :',            `${montantRetenues.toLocaleString('fr-FR')} FCFA`,                        false],
+        ['Montant net à payer :', `${parseFloat(vacation.montant_net  || 0).toLocaleString('fr-FR')} FCFA`, true],
+    ].forEach(([label, value, isLast]) => {
+        doc.setFillColor(...(isLast ? [46, 204, 113] : [248, 249, 250]));
+        doc.rect(14, y, W - 28, 10, 'F');
+        doc.setTextColor(...(isLast ? [255, 255, 255] : [44, 62, 80]));
+        doc.setFont('helvetica', isLast ? 'bold' : 'normal'); doc.setFontSize(10);
+        doc.text(label, 18, y + 7);
+        doc.text(value, W - 18, y + 7, { align: 'right' });
+        y += 12;
     });
+    y += 6;
 
-    // Cases signatures
-    const ySig = yValid + 35;
-    doc.setTextColor(0);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(52, 152, 219); doc.rect(14, y, W - 28, 8, 'F');
+    doc.setFontSize(10); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+    doc.text('VISAS ET SIGNATURES', 18, y + 5.5);
+    y += 12;
 
-    ['Enseignant', 'Surveillant', 'Comptable'].forEach((role, i) => {
-        const x = 14 + i * 62;
-        doc.text(`Signature ${role}`, x + 25, ySig, { align: 'center' });
-        doc.rect(x, ySig + 2, 50, 20);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text('Nom & Date', x + 25, ySig + 18, { align: 'center' });
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0);
+    const sigW = (W - 42) / 3;
+    [
+        { label: 'Signature Enseignant', valide: true },
+        { label: 'Visa Surveillant',     valide: ['validee_surveillant', 'approuvee_comptable'].includes(vacation.statut) },
+        { label: 'Validation Comptable', valide: vacation.statut === 'approuvee_comptable' },
+    ].forEach((box, i) => {
+        const x = 14 + i * (sigW + 7);
+        doc.setDrawColor(52, 152, 219); doc.setFillColor(248, 249, 250);
+        doc.rect(x, y, sigW, 35, 'FD');
+        doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(44, 62, 80);
+        doc.text(box.label, x + sigW / 2, y + 7, { align: 'center' });
+        if (box.valide) {
+            doc.setFontSize(16); doc.setTextColor(46, 204, 113);
+            doc.text('✓', x + sigW / 2, y + 24, { align: 'center' });
+            doc.setFontSize(7); doc.text('Validé', x + sigW / 2, y + 30, { align: 'center' });
+        } else {
+            doc.setFontSize(7); doc.setFont('helvetica', 'italic'); doc.setTextColor(150);
+            doc.text('En attente', x + sigW / 2, y + 22, { align: 'center' });
+        }
     });
+    y += 43;
 
-    // Pied de page
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`EduSchedule Pro | Fiche de Vacation | Généré le ${new Date().toLocaleDateString('fr-FR')}`, 105, 290, { align: 'center' });
+    const statutMap = {
+        generee:             { color: [241, 196, 15],  label: 'FICHE GÉNÉRÉE — EN ATTENTE DE VALIDATION' },
+        validee_surveillant: { color: [52, 152, 219],  label: 'VALIDÉE PAR LE SURVEILLANT — EN ATTENTE COMPTABLE' },
+        approuvee_comptable: { color: [46, 204, 113],  label: 'APPROUVÉE — BON DE PAIEMENT ÉMIS' },
+    };
+    const s = statutMap[vacation.statut] || { color: [149, 165, 166], label: vacation.statut };
+    doc.setFillColor(...s.color); doc.rect(14, y, W - 28, 12, 'F');
+    doc.setFontSize(9); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+    doc.text(s.label, W / 2, y + 8, { align: 'center' });
 
-    doc.save(`vacation_${vacation.nom}_${vacation.prenom}_${MOIS[vacation.mois - 1]}_${vacation.annee}.pdf`);
+    addFooter(doc);
+    doc.save(`vacation_${vacation.nom}_${vacation.prenom}_${moisLabel}_${vacation.annee}.pdf`);
 };

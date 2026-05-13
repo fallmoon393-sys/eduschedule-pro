@@ -10,15 +10,45 @@ import DashboardComptable from './pages/DashboardComptable';
 import EmploiTempsPage from './pages/EmploiTempsPage';
 import QRCodePage from './pages/QRCodePage';
 import CahierTextePage from './pages/CahierTextePage';
-import 'bootstrap/dist/css/bootstrap.min.css';
 import VacationsPage from './pages/VacationsPage';
+import 'bootstrap/dist/css/bootstrap.min.css';
 
-const PrivateRoute = ({ children, role }) => {
+export const getDashboardPath = (role) => {
+    const routes = {
+        admin:       '/dashboard/admin',
+        enseignant:  '/dashboard/enseignant',
+        delegue:     '/dashboard/delegue',
+        surveillant: '/dashboard/surveillant',
+        comptable:   '/dashboard/comptable',
+    };
+    return routes[role] ?? '/login';
+};
+
+const PrivateRoute = ({ children, roles }) => {
     const { user, loading } = useAuth();
-    if (loading) return <div className="d-flex justify-content-center mt-5"><div className="spinner-border text-primary"></div></div>;
-    if (!user) return <Navigate to="/login" />;
-    if (role && user.role !== role) return <Navigate to="/login" />;
+
+    if (loading) {
+        return (
+            <div className="d-flex justify-content-center align-items-center min-vh-100">
+                <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Chargement...</span>
+                </div>
+            </div>
+        );
+    }
+
+    if (!user) return <Navigate to="/login" replace />;
+    if (roles && roles.length > 0 && !roles.includes(user.role)) {
+        return <Navigate to={getDashboardPath(user.role)} replace />;
+    }
     return children;
+};
+
+const RootRedirect = () => {
+    const { user, loading } = useAuth();
+    if (loading) return null;
+    if (!user) return <Navigate to="/login" replace />;
+    return <Navigate to={getDashboardPath(user.role)} replace />;
 };
 
 function App() {
@@ -27,37 +57,41 @@ function App() {
             <Router>
                 <Routes>
                     <Route path="/login" element={<LoginPage />} />
+
                     <Route path="/dashboard/admin" element={
-                        <PrivateRoute role="admin"><DashboardAdmin /></PrivateRoute>
+                        <PrivateRoute roles={['admin']}><DashboardAdmin /></PrivateRoute>
                     } />
                     <Route path="/dashboard/enseignant" element={
-                        <PrivateRoute role="enseignant"><DashboardEnseignant /></PrivateRoute>
+                        <PrivateRoute roles={['enseignant']}><DashboardEnseignant /></PrivateRoute>
                     } />
                     <Route path="/dashboard/delegue" element={
-                        <PrivateRoute role="delegue"><DashboardDelegue /></PrivateRoute>
+                        <PrivateRoute roles={['delegue']}><DashboardDelegue /></PrivateRoute>
                     } />
                     <Route path="/dashboard/surveillant" element={
-                        <PrivateRoute role="surveillant"><DashboardSurveillant /></PrivateRoute>
+                        <PrivateRoute roles={['surveillant']}><DashboardSurveillant /></PrivateRoute>
                     } />
                     <Route path="/dashboard/comptable" element={
-                        <PrivateRoute role="comptable"><DashboardComptable /></PrivateRoute>
+                        <PrivateRoute roles={['comptable']}><DashboardComptable /></PrivateRoute>
                     } />
+
                     <Route path="/emploi-temps" element={
-                        <PrivateRoute role="admin"><EmploiTempsPage /></PrivateRoute>
+                        <PrivateRoute roles={['admin']}><EmploiTempsPage /></PrivateRoute>
                     } />
                     <Route path="/qrcode" element={
-                        <PrivateRoute role="admin"><QRCodePage /></PrivateRoute>
+                        <PrivateRoute roles={['admin']}><QRCodePage /></PrivateRoute>
                     } />
                     <Route path="/cahier-texte" element={
-                        <PrivateRoute role="delegue"><CahierTextePage /></PrivateRoute>
+                        <PrivateRoute roles={['delegue']}><CahierTextePage /></PrivateRoute>
                     } />
-<Route path="/vacations" element={
-    <PrivateRoute><VacationsPage /></PrivateRoute>
-} />
 
-                    <Route path="/" element={<Navigate to="/login" />} />
+                    <Route path="/vacations" element={
+                        <PrivateRoute roles={['admin', 'enseignant', 'surveillant', 'comptable']}>
+                            <VacationsPage />
+                        </PrivateRoute>
+                    } />
 
-                  
+                    <Route path="/" element={<RootRedirect />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </Router>
         </AuthProvider>

@@ -5,8 +5,8 @@ const API_URL = 'http://localhost/eduschedule-pro-corrige/eduschedule-pro-corrig
 const api = axios.create({
     baseURL: API_URL,
     headers: {
-        'Content-Type': 'application/json'
-    }
+        'Content-Type': 'application/json',
+    },
 });
 
 api.interceptors.request.use((config) => {

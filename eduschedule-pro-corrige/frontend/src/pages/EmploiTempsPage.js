@@ -31,6 +31,9 @@ const EmploiTempsPage = () => {
   const [form, setForm] = useState(defaultForm);
   const [selectedDate, setSelectedDate] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [conflits, setConflits] = useState([]);
+  const [showDupliquer, setShowDupliquer] = useState(false);
+  const [nouvelleSemaine, setNouvelleSemaine] = useState('');
   const [editId, setEditId] = useState(null);
   const [vue, setVue] = useState('mois'); // 'mois' ou 'annee'
 
@@ -158,6 +161,32 @@ const EmploiTempsPage = () => {
 
   const today = new Date();
 
+const handleDupliquer = async (e) => {
+    e.preventDefault();
+    if (!selectedClasse || !nouvelleSemaine) return;
+    try {
+        // Récupérer l'id de l'emploi du temps actuel pour la classe
+        const res = await api.get(`/emploi_temps.php?id_classe=${selectedClasse}`);
+        const idEmploiTemps = res.data?.[0]?.id;
+        if (!idEmploiTemps) {
+            alert('Aucun emploi du temps trouvé pour cette classe.');
+            return;
+        }
+        const result = await api.post('/emploi_temps.php?action=dupliquer', {
+            id_emploi_temps:  idEmploiTemps,
+            id_classe:        selectedClasse,
+            semaine_debut:    nouvelleSemaine,
+        });
+        alert(`✅ ${result.data.nb_dupliques} créneau(x) dupliqué(s) !${result.data.nb_conflits > 0 ? `\n⚠️ ${result.data.nb_conflits} conflit(s) ignoré(s).` : ''}`);
+        setShowDupliquer(false);
+        setNouvelleSemaine('');
+        chargerCreneaux();
+    } catch (err) {
+        alert('Erreur : ' + (err.response?.data?.error || 'inconnue'));
+    }
+};
+
+
   return (
     <div>
       <nav className="navbar navbar-dark bg-primary px-4">
@@ -176,6 +205,9 @@ const EmploiTempsPage = () => {
           <h4>📅 Emploi du Temps</h4>
           <div className="d-flex gap-2">
             <button className="btn btn-secondary" onClick={() => navigate('/dashboard/admin')}>← Retour</button>
+            <button className="btn btn-warning me-2" onClick={() => setShowDupliquer(!showDupliquer)} disabled={!selectedClasse}>
+              📋 Dupliquer semaine
+            </button>
             <button className="btn btn-primary" onClick={() => { setEditId(null); setForm({...defaultForm, id_classe: selectedClasse}); setShowForm(!showForm); }}>
               + Nouveau créneau
             </button>
@@ -298,6 +330,37 @@ const EmploiTempsPage = () => {
                 </div>
               </form>
             </div>
+          </div>
+        )}
+
+        {/* Formulaire duplication */}
+        {showDupliquer && (
+          <div className="card mb-4 border-warning">
+            <div className="card-header bg-warning d-flex justify-content-between">
+              <h5 className="mb-0">📋 Dupliquer l'emploi du temps vers une autre semaine</h5>
+              <button className="btn btn-sm btn-outline-dark" onClick={() => setShowDupliquer(false)}>✕</button>
+            </div>
+            <div className="card-body">
+              <p className="text-muted">Copie tous les créneaux de la classe sélectionnée vers une nouvelle semaine.</p>
+              <form onSubmit={handleDupliquer} className="d-flex gap-3 align-items-end">
+                <div>
+                  <label className="form-label fw-bold">Nouvelle semaine (date de début)</label>
+                  <input type="date" className="form-control" required
+                    value={nouvelleSemaine} onChange={e => setNouvelleSemaine(e.target.value)} />
+                </div>
+                <button type="submit" className="btn btn-warning">✅ Dupliquer</button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Conflits détectés */}
+        {conflits.length > 0 && (
+          <div className="alert alert-danger mb-4">
+            <h6>⚠️ Conflits détectés :</h6>
+            <ul className="mb-0">
+              {conflits.map((c, i) => <li key={i}>{c.message}</li>)}
+            </ul>
           </div>
         )}
 
